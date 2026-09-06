@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://fe-memori.vercel.app', 'http://localhost:5173'],
+    'allowed_origins' => ['https://fe-memori.vercel.app', 'http://localhost:5173', 'https://me.mori.online'],
 
     'allowed_origins_patterns' => [],
 
