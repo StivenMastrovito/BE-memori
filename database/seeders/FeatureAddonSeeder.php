@@ -24,9 +24,7 @@ class FeatureAddonSeeder extends Seeder
 
             ['key' => 'password_protection', 'name' => 'Protezione con password', 'category' => 'feature', 'price' => 2.99],
             ['key' => 'qr_code', 'name' => 'QR Code dedicato', 'category' => 'feature', 'price' => 4.99],
-            ['key' => 'custom_domain', 'name' => 'Dominio personalizzato', 'category' => 'feature', 'price' => 9.99],
             ['key' => 'remove_watermark', 'name' => 'Rimozione watermark', 'category' => 'feature', 'price' => 3.99],
-            ['key' => 'analytics', 'name' => 'Statistiche di visita', 'category' => 'feature', 'price' => 2.99],
         ];
 
         foreach ($addons as $addon) {
