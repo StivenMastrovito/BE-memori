@@ -11,6 +11,7 @@ class Page extends Model
         'theme_id',
         'slug',
         'title',
+        'subtitle',
         'occasion',
         'custom_colors',
         'custom_fonts',

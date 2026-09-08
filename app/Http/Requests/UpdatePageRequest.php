@@ -15,6 +15,7 @@ class UpdatePageRequest extends FormRequest
     {
         return [
             'title' => ['sometimes', 'string', 'max:255'],
+            'subtitle' => ['nullable', 'string', 'max:255'],
             'occasion' => ['nullable', 'string',],
             'theme_id' => ['nullable', 'exists:themes,id'],
             'custom_colors' => ['nullable', 'array'],
