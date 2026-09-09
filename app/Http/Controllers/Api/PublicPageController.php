@@ -43,6 +43,7 @@ class PublicPageController extends Controller
 
         $payload = [
             'title' => $page->title,
+            'subtitle' => $page->subtitle,
             'occasion' => $page->occasion,
             'theme' => $page->theme,
             'background_pattern' => $page->background_pattern,
