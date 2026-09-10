@@ -66,7 +66,13 @@ class PageController extends Controller
 
         abort_if($page->isLocked(), 422, 'Questa pagina è stata pubblicata e non può più essere modificata.');
 
-        $page->update($request->validated());
+        $validated = $request->validated();
+
+        if (isset($validated['title']) && $validated['title'] !== $page->title) {
+            $validated['slug'] = $this->generateUniqueSlug($validated['title']);
+        }
+
+        $page->update($validated);
 
         return response()->json($page->fresh('theme'));
     }
@@ -82,11 +88,14 @@ class PageController extends Controller
 
     private function generateUniqueSlug(string $title): string
     {
-        $baseSlug = Str::slug($title);
-        $slug = $baseSlug;
+        $baseSlug = Str::slug($title) ?: 'pagina';
+        $code = Str::lower(Str::random(8));
+        $slug = $baseSlug . '-' . $code;
 
+        // Nell'improbabile caso di collisione anche con il codice, rigenera
         while (Page::where('slug', $slug)->exists()) {
-            $slug = $baseSlug . '-' . Str::lower(Str::random(5));
+            $code = Str::lower(Str::random(8));
+            $slug = $baseSlug . '-' . $code;
         }
 
         return $slug;
