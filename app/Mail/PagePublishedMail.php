@@ -5,6 +5,8 @@ namespace App\Mail;
 use App\Models\Page;
 use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\RoundBlockSizeMode;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
@@ -68,11 +70,7 @@ class PagePublishedMail extends Mailable
         }
 
         try {
-            $qrCode = new QrCode($this->pageUrl);
-            $writer = new PngWriter();
-            $result = $writer->write($qrCode);
-
-            $framedImage = $this->addFrame($result->getString());
+            $framedImage = $this->generateBrandedFramedQrCode();
 
             return [
                 Attachment::fromData(fn() => $framedImage, 'qr-code.png')
@@ -88,52 +86,148 @@ class PagePublishedMail extends Mailable
         }
     }
 
-    private function addFrame(string $qrPngData): string
+    private function generateBrandedFramedQrCode(): string
     {
-        $padding = 60;        // spazio attorno al QR
-        $labelHeight = 50;    // spazio per il testo sotto
-        $borderRadius = 24;   // angoli arrotondati della cornice
+        $innerX = 165;
+        $innerY = 195;
+        $innerWidth = 740;
+        $innerHeight = 640;
+        $margin = 60;
+        $targetSize = min($innerWidth, $innerHeight) - ($margin * 2);
 
-        $qrImage = imagecreatefromstring($qrPngData);
-        $qrWidth = imagesx($qrImage);
-        $qrHeight = imagesy($qrImage);
+        $qrCode = new QrCode(
+            data: $this->pageUrl,
+            errorCorrectionLevel: ErrorCorrectionLevel::High,
+            roundBlockSizeMode: RoundBlockSizeMode::Margin,
+            size: $targetSize,
+            margin: 10,
+        );
+        $writer = new PngWriter();
+        $result = $writer->write($qrCode);
 
-        $canvasWidth = $qrWidth + ($padding * 2);
-        $canvasHeight = $qrHeight + ($padding * 2) + $labelHeight;
+        $rawQr = imagecreatefromstring($result->getString());
+        $qrSize = imagesx($rawQr);
 
-        $canvas = imagecreatetruecolor($canvasWidth, $canvasHeight);
-        imagesavealpha($canvas, true);
-        $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
-        imagefill($canvas, 0, 0, $transparent);
+        // 1. Appiattisci su una tela bianca opaca, per eliminare ogni ambiguità di trasparenza
+        $qrImage = imagecreatetruecolor($qrSize, $qrSize);
+        $white = imagecolorallocate($qrImage, 255, 255, 255);
+        imagefill($qrImage, 0, 0, $white);
+        imagecopy($qrImage, $rawQr, 0, 0, 0, 0, $qrSize, $qrSize);
+        imagedestroy($rawQr);
 
-        // Sfondo bianco con angoli arrotondati
-        $white = imagecolorallocate($canvas, 255, 255, 255);
-        imagefilledrectangle($canvas, 0, 0, $canvasWidth, $canvasHeight, $white);
+        // 2. Colora i moduli scuri con il gradiente
+        $this->applyGradientToQr($qrImage);
 
-        // Bordo colorato (personalizzabile con il colore del tema, qui un esempio fisso)
-        $borderColor = imagecolorallocate($canvas, 191, 70, 235); // es. --page-primary
-        imagesetthickness($canvas, 6);
-        imagerectangle($canvas, 3, 3, $canvasWidth - 4, $canvasHeight - 4, $borderColor);
+        // 3. Logo al centro con sfondo bianco protettivo
+        $this->pasteLogoOnQr($qrImage);
 
-        // Incolla il QR al centro
-        imagecopy($canvas, $qrImage, $padding, $padding, 0, 0, $qrWidth, $qrHeight);
+        // 4. Compone dentro la cornice
+        $framePath = resource_path('images/qr-frame.png');
+        $frame = imagecreatefrompng($framePath);
+        imagesavealpha($frame, true);
 
-        // Testo sotto il QR
-        $textColor = imagecolorallocate($canvas, 44, 44, 44);
-        $font = 5; // font GD built-in (1-5, nessun file esterno richiesto)
-        $text = 'Inquadrami per aprire la pagina';
-        $textWidth = imagefontwidth($font) * strlen($text);
-        $textX = (int) (($canvasWidth - $textWidth) / 2);
-        $textY = $canvasHeight - $labelHeight + 15;
-        imagestring($canvas, $font, $textX, $textY, $text, $textColor);
+        $pasteX = $innerX + (int) (($innerWidth - $targetSize) / 2);
+        $pasteY = $innerY + (int) (($innerHeight - $targetSize) / 2);
+        imagecopy($frame, $qrImage, $pasteX, $pasteY, 0, 0, $targetSize, $targetSize);
 
         ob_start();
-        imagepng($canvas);
+        imagepng($frame);
         $output = ob_get_clean();
 
         imagedestroy($qrImage);
-        imagedestroy($canvas);
+        imagedestroy($frame);
 
         return $output;
+    }
+
+    private function applyGradientToQr($qrImage): void
+    {
+        $width = imagesx($qrImage);
+        $height = imagesy($qrImage);
+
+        $colorStart = ['r' => 34, 'g' => 211, 'b' => 238];
+        $colorEnd   = ['r' => 147, 'g' => 51, 'b' => 234];
+
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $rgb = imagecolorat($qrImage, $x, $y);
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+
+                // Ora che l'immagine è appiattita su bianco, basta la luminanza per rilevare i pixel scuri
+                $isDark = ($r + $g + $b) < 250;
+
+                if (! $isDark) {
+                    continue;
+                }
+
+                $t = ($x + $y) / ($width + $height);
+                $newR = (int) ($colorStart['r'] + ($colorEnd['r'] - $colorStart['r']) * $t);
+                $newG = (int) ($colorStart['g'] + ($colorEnd['g'] - $colorStart['g']) * $t);
+                $newB = (int) ($colorStart['b'] + ($colorEnd['b'] - $colorStart['b']) * $t);
+
+                $newColor = imagecolorallocate($qrImage, $newR, $newG, $newB);
+                imagesetpixel($qrImage, $x, $y, $newColor);
+            }
+        }
+    }
+
+    private function pasteLogoOnQr($qrImage): void
+    {
+        $logoPath = resource_path('images/heart-logo.png');
+
+        if (! file_exists($logoPath)) {
+            return;
+        }
+
+        $qrSize = imagesx($qrImage);
+        $logoAreaSize = (int) ($qrSize * 0.14);
+        $circlePadding = 8;
+        $circleSize = $logoAreaSize + ($circlePadding * 2);
+
+        $centerX = (int) ($qrSize / 2);
+        $centerY = (int) ($qrSize / 2);
+
+        $white = imagecolorallocate($qrImage, 255, 255, 255);
+        imagefilledellipse($qrImage, $centerX, $centerY, $circleSize, $circleSize, $white);
+
+        $logo = imagecreatefrompng($logoPath);
+        imagesavealpha($logo, true);
+        imagealphablending($logo, true);
+
+        $resizedLogo = imagecreatetruecolor($logoAreaSize, $logoAreaSize);
+        imagesavealpha($resizedLogo, true);
+        $transparent = imagecolorallocatealpha($resizedLogo, 255, 255, 255, 127);
+        imagefill($resizedLogo, 0, 0, $transparent);
+        imagealphablending($resizedLogo, false);
+
+        imagecopyresampled(
+            $resizedLogo,
+            $logo,
+            0,
+            0,
+            0,
+            0,
+            $logoAreaSize,
+            $logoAreaSize,
+            imagesx($logo),
+            imagesy($logo)
+        );
+
+        imagealphablending($qrImage, true);
+        imagecopy(
+            $qrImage,
+            $resizedLogo,
+            $centerX - (int) ($logoAreaSize / 2),
+            $centerY - (int) ($logoAreaSize / 2),
+            0,
+            0,
+            $logoAreaSize,
+            $logoAreaSize
+        );
+
+        imagedestroy($logo);
+        imagedestroy($resizedLogo);
     }
 }
