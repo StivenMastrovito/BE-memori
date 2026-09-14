@@ -13,6 +13,8 @@ use App\Http\Requests\UpdatePagePasswordRequest;
 use Illuminate\Support\Facades\Hash;
 use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\Color\Color;
+use Endroid\QrCode\RoundBlockSizeMode;
 use Illuminate\Http\Response;
 
 
@@ -141,7 +143,13 @@ class PageController extends Controller
 
         $pageUrl = rtrim(config('services.frontend_url'), '/') . '/p/' . $page->slug;
 
-        $qrCode = new QrCode($pageUrl);
+        $qrCode = new QrCode(
+            data: $pageUrl,
+            foregroundColor: new Color(191, 70, 235),      // colore dei moduli (es. il tuo --page-primary)
+            backgroundColor: new Color(255, 255, 255),   // sfondo
+            roundBlockSizeMode: RoundBlockSizeMode::Margin,
+            margin: 10,
+        );
         $writer = new PngWriter();
         $result = $writer->write($qrCode);
 
